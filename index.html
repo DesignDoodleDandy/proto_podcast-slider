@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HMG Podcast-Slider · Nutzertest</title>
+    <meta
+      name="description"
+      content="Responsiver Prototyp zweier Podcast-Slider-Varianten für einen HMG Nutzertest."
+    />
+    <link rel="stylesheet" href="styles/app.css?v=10" />
+
+    <script type="module">
+      // Load HMG Design System Web Components with our project prefix.
+      const loader = await import(
+        "https://designsystem.hmgassets.com/webcomponents/loader.js"
+      );
+      const wc = await loader.getWebComponents({ prefix: "podcast-test" });
+      await wc.loadComponents([
+        "theme-hb",
+        "headline",
+        "button",
+        "ghost-button",
+        "play-button",
+        "paid-label",
+        "icon",
+        "rich-text",
+      ]);
+      // Only after the theme has upgraded do we render — otherwise our
+      // components paint before their tokens are available.
+      customElements.whenDefined("podcast-test-theme-hb").then(async () => {
+        const { PodcastSlider } = await import("./scripts/slider.js?v=8");
+        new PodcastSlider(document.getElementById("variant-a"), { mode: "paged" });
+        new PodcastSlider(document.getElementById("variant-b"), { mode: "dots" });
+      });
+    </script>
+  </head>
+  <body>
+    <podcast-test-theme-hb>
+      <main class="page">
+        <div class="page__prose">
+          <podcast-test-rich-text mode="brand" size="large">
+            <p>
+              <b>Lorem ipsum dolor sit amet,</b> consetetur sadipscing elitr,
+              sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+              aliquyam erat, sed diam voluptua. At vero eos et accusam et justo
+              duo dolores et ea rebum.
+            </p>
+          </podcast-test-rich-text>
+        </div>
+
+        <section id="variant-a" aria-label="Variante A – Prev/Next im Header"></section>
+
+        <div class="page__prose">
+          <podcast-test-rich-text mode="brand" size="large">
+            <p>
+              <i>Stet clita kasd gubergren,</i> no sea takimata sanctus est
+              Lorem ipsum dolor sit amet. Consetetur sadipscing elitr, sed diam
+              nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam
+              erat.
+            </p>
+          </podcast-test-rich-text>
+        </div>
+
+        <section id="variant-b" aria-label="Variante B – Dots-Indicator"></section>
+
+        <div class="page__prose">
+          <podcast-test-rich-text mode="brand" size="large">
+            <p>
+              Duis autem vel eum iriure dolor in hendrerit in vulputate velit
+              esse molestie consequat, vel illum dolore eu feugiat nulla
+              facilisis at vero eros et accumsan et iusto odio dignissim.
+            </p>
+          </podcast-test-rich-text>
+        </div>
+      </main>
+    </podcast-test-theme-hb>
+  </body>
+</html>
