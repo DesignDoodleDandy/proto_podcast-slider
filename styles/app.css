@@ -136,6 +136,9 @@ img { display: block; max-width: 100%; }
   padding-inline-start: var(--track-pl);
   padding-inline-end: 0;
   box-sizing: border-box;
+  /* CSS scroll-snap interfered with mid-flight JS smooth-scroll animations
+     from rapid button clicks. We handle snapping ourselves in the settle
+     timer (bind() → 150 ms after last scroll event → align to nearest tile). */
   scroll-padding-inline-start: var(--track-pl);
 }
 @media (min-width: 641px) {

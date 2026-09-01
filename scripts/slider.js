@@ -72,6 +72,11 @@ export class PodcastSlider {
     this.root = root;
     this.mode = mode;
     this.data = data;
+    // Authoritative "left-most tile currently intended to be visible".
+    // Set on button clicks / dot clicks. During a smooth-scroll animation
+    // this stays at the TARGET so consecutive clicks advance correctly,
+    // instead of re-reading a mid-animation scrollLeft.
+    this.firstVisibleIndex = 0;
     this.render();
     this.updateSpacer();
     this.bind();
@@ -168,12 +173,32 @@ export class PodcastSlider {
     this.nextBtn?.addEventListener("click", () => this.step(1));
 
     let rafId = 0;
+    let settleTimer = 0;
     this.track.addEventListener("scroll", () => {
-      if (rafId) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = 0;
-        this.updateControls();
-      });
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          this.updateControls();
+        });
+      }
+      // If the user scrolls MANUALLY (wheel / trackpad / touch drag), the
+      // authoritative index must catch up once scrolling has settled AND
+      // the scroll must snap to the nearest tile so the left tile stays
+      // aligned to the header. 150 ms of no scroll events → user stopped.
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        const { visibleCount: K } = this.computeVisibility();
+        const maxIdx = Math.max(0, this.data.length - K);
+        const idx = Math.max(0, Math.min(maxIdx, Math.round(this.track.scrollLeft / STRIDE)));
+        this.firstVisibleIndex = idx;
+        // Only snap if we're not already exactly on the target position.
+        const target = this.tiles[idx].offsetLeft
+          - (parseFloat(getComputedStyle(this.track).paddingInlineStart) || 0);
+        if (Math.abs(this.track.scrollLeft - target) > 0.5) {
+          this.track.scrollTo({ left: target, behavior: "smooth" });
+        }
+        this.updateControlsFromIndex();
+      }, 150);
     });
 
     window.addEventListener("resize", () => {
@@ -226,12 +251,15 @@ export class PodcastSlider {
   }
 
   step(direction) {
-    // Advance the slider by exactly ONE podcast per click, but never past
-    // the point where the last podcast is still fully visible.
-    const { firstVisible, visibleCount: K } = this.computeVisibility();
+    // Advance the slider by exactly ONE podcast per click. Uses the
+    // AUTHORITATIVE firstVisibleIndex so consecutive clicks — even while
+    // the smooth-scroll animation of the previous click is still running —
+    // correctly compound (0 → 1 → 2 …) instead of no-op'ing on the same
+    // mid-animation scroll value.
+    const { visibleCount: K } = this.computeVisibility();
     const target = Math.max(
       0,
-      Math.min(firstVisible + direction, this.data.length - K)
+      Math.min(this.firstVisibleIndex + direction, this.data.length - K)
     );
     this.scrollToIndex(target);
   }
@@ -251,14 +279,34 @@ export class PodcastSlider {
         this.track.scrollWidth - this.track.clientWidth
       )
     );
+    this.firstVisibleIndex = i;
     this.track.scrollTo({ left: target, behavior: "smooth" });
+    // Immediately reflect the new authoritative state in the pill and
+    // prev/next disabled attributes; the scroll event will keep them in
+    // sync once the animation lands.
+    this.updateControlsFromIndex();
   }
 
   updateControls() {
     const { firstVisible, visibleCount: K } = this.computeVisibility();
     const atStart = firstVisible <= 0;
     const atEnd = firstVisible >= this.data.length - K;
-    // HMG WebComponents expose `disabled` as an attribute, not a property.
+    this.prevBtn?.toggleAttribute("disabled", atStart);
+    this.nextBtn?.toggleAttribute("disabled", atEnd);
+    this.renderDots(firstVisible, K);
+  }
+
+  /** Same as updateControls but sourced from the AUTHORITATIVE index
+      instead of the (possibly mid-animation) scroll position — used
+      right after a button/dot click to reflect intent immediately. */
+  updateControlsFromIndex() {
+    const { visibleCount: K } = this.computeVisibility();
+    const firstVisible = Math.max(
+      0,
+      Math.min(this.firstVisibleIndex, this.data.length - K)
+    );
+    const atStart = firstVisible <= 0;
+    const atEnd = firstVisible >= this.data.length - K;
     this.prevBtn?.toggleAttribute("disabled", atStart);
     this.nextBtn?.toggleAttribute("disabled", atEnd);
     this.renderDots(firstVisible, K);
