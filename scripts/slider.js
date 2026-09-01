@@ -178,20 +178,27 @@ export class PodcastSlider {
       if (!rafId) {
         rafId = requestAnimationFrame(() => {
           rafId = 0;
-          this.updateControls();
+          // While a JS-driven smooth scroll from a button/dot click is
+          // in flight, DON'T update the pill from the mid-animation scroll
+          // value — the pill has already jumped to the authoritative
+          // target and re-reading scroll would just make it jitter.
+          if (this._jsScrolling) {
+            this.updateDisabledFromIndex();
+          } else {
+            this.updateControls();
+          }
         });
       }
-      // If the user scrolls MANUALLY (wheel / trackpad / touch drag), the
-      // authoritative index must catch up once scrolling has settled AND
-      // the scroll must snap to the nearest tile so the left tile stays
-      // aligned to the header. 150 ms of no scroll events → user stopped.
+      // Manual scroll (wheel / trackpad / touch drag) settles here:
+      // 150 ms after the last scroll event, snap to the nearest tile so
+      // the leftmost visible tile always lands on the header column.
       clearTimeout(settleTimer);
       settleTimer = setTimeout(() => {
+        if (this._jsScrolling) return;
         const { visibleCount: K } = this.computeVisibility();
         const maxIdx = Math.max(0, this.data.length - K);
         const idx = Math.max(0, Math.min(maxIdx, Math.round(this.track.scrollLeft / STRIDE)));
         this.firstVisibleIndex = idx;
-        // Only snap if we're not already exactly on the target position.
         const target = this.tiles[idx].offsetLeft
           - (parseFloat(getComputedStyle(this.track).paddingInlineStart) || 0);
         if (Math.abs(this.track.scrollLeft - target) > 0.5) {
@@ -205,6 +212,15 @@ export class PodcastSlider {
       this.updateSpacer();
       this.updateControls();
     });
+  }
+
+  /** Toggle prev/next disabled state based on the authoritative index —
+      without touching the dots row. */
+  updateDisabledFromIndex() {
+    const { visibleCount: K } = this.computeVisibility();
+    const fv = Math.max(0, Math.min(this.firstVisibleIndex, this.data.length - K));
+    this.prevBtn?.toggleAttribute("disabled", fv <= 0);
+    this.nextBtn?.toggleAttribute("disabled", fv >= this.data.length - K);
   }
 
   /** How many tiles fit fully in the current viewport, and which is the
@@ -280,10 +296,13 @@ export class PodcastSlider {
       )
     );
     this.firstVisibleIndex = i;
+    this._jsScrolling = true;
+    clearTimeout(this._jsScrollClear);
+    this._jsScrollClear = setTimeout(() => { this._jsScrolling = false; }, 700);
     this.track.scrollTo({ left: target, behavior: "smooth" });
-    // Immediately reflect the new authoritative state in the pill and
-    // prev/next disabled attributes; the scroll event will keep them in
-    // sync once the animation lands.
+    // Reflect the new authoritative state instantly — the pill jumps to
+    // its new slot right away (with CSS transitions animating the width
+    // change) instead of lagging behind the scroll animation.
     this.updateControlsFromIndex();
   }
 
@@ -319,47 +338,56 @@ export class PodcastSlider {
       firstVisible = v.firstVisible;
       K = v.visibleCount;
     }
+    // Build the dot skeleton ONCE per K — a stable DOM lets CSS width /
+    // background transitions run cleanly instead of being torn down on
+    // every scroll frame. On firstVisible change we only toggle classes
+    // and inline widths on the existing nodes.
+    if (this._skeletonK !== K) this._buildDotsSkeleton(K);
+    this._updatePillPosition(firstVisible, K);
+  }
+
+  _buildDotsSkeleton(K) {
     const N = this.data.length;
-    // Slots: N − K small dots + 1 active pill = N − K + 1 elements.
-    // The pill occupies slot index === firstVisible and represents the K
-    // currently-visible tiles. Small dots BEFORE the pill represent tiles
-    // 0 … firstVisible−1; small dots AFTER represent tiles firstVisible+K … N−1.
     const slotCount = N - K + 1;
-    const pillWidth = K * 6 + Math.max(0, K - 1) * 5;
-    const slots = [];
-    for (let s = 0; s < slotCount; s++) {
-      if (s === firstVisible) {
-        slots.push({ pill: true });
-      } else {
-        const tileIndex = s < firstVisible ? s : s - 1 + K;
-        slots.push({ pill: false, tileIndex });
-      }
-    }
-    this.dotsEl.innerHTML = slots
-      .map((slot) => {
-        if (slot.pill) {
-          return `<li>
-            <span
-              class="slider__dot slider__dot--active"
-              style="width:${pillWidth}px"
-              aria-hidden="true"
-            ></span>
-          </li>`;
-        }
-        return `<li>
-          <button
-            class="slider__dot"
-            type="button"
-            data-target="${slot.tileIndex}"
-            aria-label="Zeige Podcast ${slot.tileIndex + 1} von ${N}"
-          ></button>
-        </li>`;
-      })
-      .join("");
+    this._skeletonK = K;
+    this.dotsEl.innerHTML = Array.from({ length: slotCount }, (_, s) =>
+      `<li>
+        <button class="slider__dot" type="button" data-slot="${s}"></button>
+      </li>`
+    ).join("");
     this.dotsEl.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("click", () => {
-        this.scrollToIndex(Number(btn.dataset.target));
+        // Slot i navigates to firstVisible = i. Every slot is a valid
+        // navigation target — including the current one (no-op).
+        const slot = Number(btn.dataset.slot);
+        this.scrollToIndex(slot);
       });
+    });
+  }
+
+  _updatePillPosition(firstVisible, K) {
+    const N = this.data.length;
+    const pillWidth = K * 6 + Math.max(0, K - 1) * 5;
+    const btns = this.dotsEl.querySelectorAll("button");
+    btns.forEach((btn, s) => {
+      const isPill = s === firstVisible;
+      btn.classList.toggle("slider__dot--active", isPill);
+      // Always set an explicit numeric width so the CSS width transition
+      // can animate cleanly between values (empty → number never fires).
+      btn.style.width = isPill ? `${pillWidth}px` : `6px`;
+      if (isPill) {
+        btn.setAttribute(
+          "aria-label",
+          `Aktuell sichtbar: Podcast ${firstVisible + 1} bis ${firstVisible + K} von ${N}`
+        );
+        btn.setAttribute("aria-current", "true");
+      } else {
+        btn.setAttribute(
+          "aria-label",
+          `Zu Podcast ${s + 1} von ${N} springen`
+        );
+        btn.removeAttribute("aria-current");
+      }
     });
   }
 }
