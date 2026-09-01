@@ -146,14 +146,16 @@ img { display: block; max-width: 100%; }
 }
 .slider__track::-webkit-scrollbar { display: none; }
 
-/* Trailing spacer — enough width so scrollLeft can reach the position
-   that snaps the LAST tile to the header's left edge. scrollWidth in
-   Chromium omits padding-inline-start, so the spacer size compensates:
-   viewport-width − tile-width − gap  (padding-left NOT subtracted). */
+/* Trailing spacer — width is computed in JS (updateSpacer()) so that
+   the leftmost visible tile aligns to the header at max-scroll, while
+   still stopping the moment the LAST tile is fully visible on the right.
+   The negative margin cancels the flex gap between last tile and
+   ::after so the JS spacer formula corresponds 1:1 to actual scrollWidth. */
 .slider__track::after {
   content: "";
-  flex: 0 0 max(0px, calc(100% - var(--tile-w) - var(--hmg-des-dimensions-gap-xs, 10px)));
+  flex: 0 0 var(--spacer-w, 0px);
   align-self: stretch;
+  margin-inline-start: calc(-1 * var(--hmg-des-dimensions-gap-xs, 10px));
 }
 
 .slider__divider {

@@ -60,13 +60,20 @@ function tileMarkup(podcast, index) {
     </article>`;
 }
 
+// Layout constants — kept in sync with .podcast-tile / .slider__track CSS.
+const TILE_W = 180;
+const GAP = 10;
+const DIVIDER_W = 1;
+// Distance from one tile's left edge to the next tile's left edge.
+const STRIDE = TILE_W + GAP + DIVIDER_W + GAP;
+
 export class PodcastSlider {
   constructor(root, { mode = "paged", data = PODCASTS } = {}) {
     this.root = root;
     this.mode = mode;
     this.data = data;
-    this.activeIndex = 0;
     this.render();
+    this.updateSpacer();
     this.bind();
     this.updateControls();
   }
@@ -165,38 +172,66 @@ export class PodcastSlider {
       if (rafId) return;
       rafId = requestAnimationFrame(() => {
         rafId = 0;
-        this.syncActiveFromScroll();
         this.updateControls();
       });
     });
 
-    window.addEventListener("resize", () => this.updateControls());
+    window.addEventListener("resize", () => {
+      this.updateSpacer();
+      this.updateControls();
+    });
   }
 
-  syncActiveFromScroll() {
-    // Which tile is currently aligned to the header's left edge?
+  /** How many tiles fit fully in the current viewport, and which is the
+      leftmost fully visible one at the current scroll position. */
+  computeVisibility() {
+    const clientW = this.track.clientWidth;
     const trackPl = parseFloat(getComputedStyle(this.track).paddingInlineStart) || 0;
-    const alignX = this.track.getBoundingClientRect().left + trackPl;
-    let best = 0;
-    let bestDist = Infinity;
-    this.tiles.forEach((tile, i) => {
-      const d = Math.abs(tile.getBoundingClientRect().left - alignX);
-      if (d < bestDist) {
-        bestDist = d;
-        best = i;
+    // K tiles + (K−1) dividers + (2K−2) gaps ≤ clientW − trackPl
+    //   →  K*STRIDE − (DIVIDER_W + 2*GAP)  ≤  clientW − trackPl
+    const trailing = DIVIDER_W + 2 * GAP; // 21
+    const K = Math.max(
+      1,
+      Math.min(
+        this.data.length,
+        Math.floor((clientW - trackPl + trailing) / STRIDE)
+      )
+    );
+    const scroll = this.track.scrollLeft;
+    let firstVisible = this.data.length - K;
+    for (let i = 0; i < this.tiles.length; i++) {
+      if (this.tiles[i].offsetLeft >= scroll - 0.5) {
+        firstVisible = i;
+        break;
       }
-    });
-    if (best !== this.activeIndex) {
-      this.activeIndex = best;
-      this.renderDots();
     }
+    firstVisible = Math.max(0, Math.min(firstVisible, this.data.length - K));
+    return { firstVisible, visibleCount: K };
+  }
+
+  /** Dynamic trailing spacer — sized so max-scroll positions the leftmost
+      visible tile at the header padding column, while the last tile is
+      still fully in view. Prevents the "empty right space" that a static
+      spacer would produce and enforces the "stop when last tile fits"
+      requirement. */
+  updateSpacer() {
+    const clientW = this.track.clientWidth;
+    const trackPl = parseFloat(getComputedStyle(this.track).paddingInlineStart) || 0;
+    const { visibleCount: K } = this.computeVisibility();
+    const N = this.data.length;
+    const needed = (N - K) * STRIDE + clientW;
+    const existing = trackPl + N * STRIDE - (DIVIDER_W + 2 * GAP);
+    const spacer = Math.max(0, needed - existing);
+    this.track.style.setProperty("--spacer-w", `${spacer}px`);
   }
 
   step(direction) {
-    // Buttons always advance the slider by exactly one podcast.
+    // Advance the slider by exactly ONE podcast per click, but never past
+    // the point where the last podcast is still fully visible.
+    const { firstVisible, visibleCount: K } = this.computeVisibility();
     const target = Math.max(
       0,
-      Math.min(this.activeIndex + direction, this.data.length - 1)
+      Math.min(firstVisible + direction, this.data.length - K)
     );
     this.scrollToIndex(target);
   }
@@ -204,11 +239,7 @@ export class PodcastSlider {
   scrollToIndex(i) {
     const tile = this.tiles[i];
     if (!tile) return;
-    this.activeIndex = i;
-    // Align the target tile to the track's inner content edge — i.e. the
-    // same x-position where the "Podcasts" header text starts, not to the
-    // outer track edge. This keeps the currently-leftmost tile aligned to
-    // the header at every scroll position.
+    // Align the target tile to the header padding column.
     const trackPl = parseFloat(getComputedStyle(this.track).paddingInlineStart) || 0;
     const trackRect = this.track.getBoundingClientRect();
     const tileRect = tile.getBoundingClientRect();
@@ -224,38 +255,62 @@ export class PodcastSlider {
   }
 
   updateControls() {
-    const atStart = this.track.scrollLeft <= 1;
-    const atEnd =
-      this.track.scrollLeft + this.track.clientWidth >=
-      this.track.scrollWidth - 1;
+    const { firstVisible, visibleCount: K } = this.computeVisibility();
+    const atStart = firstVisible <= 0;
+    const atEnd = firstVisible >= this.data.length - K;
     // HMG WebComponents expose `disabled` as an attribute, not a property.
     this.prevBtn?.toggleAttribute("disabled", atStart);
     this.nextBtn?.toggleAttribute("disabled", atEnd);
-    this.renderDots();
+    this.renderDots(firstVisible, K);
   }
 
-  renderDots() {
+  renderDots(firstVisible, K) {
     if (!this.dotsEl) return;
-    // Render one dot per podcast so the indicator matches the total count.
-    this.dotsEl.innerHTML = this.data
-      .map(
-        (_, i) => `<li>
+    if (firstVisible == null || K == null) {
+      const v = this.computeVisibility();
+      firstVisible = v.firstVisible;
+      K = v.visibleCount;
+    }
+    const N = this.data.length;
+    // Slots: N − K small dots + 1 active pill = N − K + 1 elements.
+    // The pill occupies slot index === firstVisible and represents the K
+    // currently-visible tiles. Small dots BEFORE the pill represent tiles
+    // 0 … firstVisible−1; small dots AFTER represent tiles firstVisible+K … N−1.
+    const slotCount = N - K + 1;
+    const pillWidth = K * 6 + Math.max(0, K - 1) * 5;
+    const slots = [];
+    for (let s = 0; s < slotCount; s++) {
+      if (s === firstVisible) {
+        slots.push({ pill: true });
+      } else {
+        const tileIndex = s < firstVisible ? s : s - 1 + K;
+        slots.push({ pill: false, tileIndex });
+      }
+    }
+    this.dotsEl.innerHTML = slots
+      .map((slot) => {
+        if (slot.pill) {
+          return `<li>
+            <span
+              class="slider__dot slider__dot--active"
+              style="width:${pillWidth}px"
+              aria-hidden="true"
+            ></span>
+          </li>`;
+        }
+        return `<li>
           <button
-            class="slider__dot${i === this.activeIndex ? " slider__dot--active" : ""}"
+            class="slider__dot"
             type="button"
-            data-target="${i}"
-            role="tab"
-            aria-selected="${i === this.activeIndex}"
-            aria-label="Zeige Podcast ${i + 1} von ${this.data.length}"
+            data-target="${slot.tileIndex}"
+            aria-label="Zeige Podcast ${slot.tileIndex + 1} von ${N}"
           ></button>
-        </li>`
-      )
+        </li>`;
+      })
       .join("");
     this.dotsEl.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const idx = Number(btn.dataset.target);
-        this.activeIndex = idx;
-        this.scrollToIndex(idx);
+        this.scrollToIndex(Number(btn.dataset.target));
       });
     });
   }

@@ -8,7 +8,7 @@
       name="description"
       content="Responsiver Prototyp zweier Podcast-Slider-Varianten für einen HMG Nutzertest."
     />
-    <link rel="stylesheet" href="styles/app.css?v=10" />
+    <link rel="stylesheet" href="styles/app.css?v=12" />
 
     <script type="module">
       // Load HMG Design System Web Components with our project prefix.
@@ -29,7 +29,7 @@
       // Only after the theme has upgraded do we render — otherwise our
       // components paint before their tokens are available.
       customElements.whenDefined("podcast-test-theme-hb").then(async () => {
-        const { PodcastSlider } = await import("./scripts/slider.js?v=8");
+        const { PodcastSlider } = await import("./scripts/slider.js?v=11");
         new PodcastSlider(document.getElementById("variant-b"), { mode: "dots" });
       });
     </script>
