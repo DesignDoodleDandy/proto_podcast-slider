@@ -348,19 +348,31 @@ export class PodcastSlider {
 
   _buildDotsSkeleton(K) {
     const N = this.data.length;
-    const slotCount = N - K + 1;
     this._skeletonK = K;
-    this.dotsEl.innerHTML = Array.from({ length: slotCount }, (_, s) =>
-      `<li>
-        <button class="slider__dot" type="button" data-slot="${s}"></button>
-      </li>`
-    ).join("");
+    // Fixed set of N slot positions (one per podcast). The pill overlay
+    // slides over them via translateX. Slot stride = 6 px (dot width) +
+    // 5 px (gap) = 11 px, matching the JS layout constants below.
+    this.dotsEl.innerHTML = `
+      <div class="slider__dots-track">
+        ${Array.from({ length: N }, (_, t) =>
+          `<button class="slider__dot" type="button" data-tile="${t}"></button>`
+        ).join("")}
+        <span class="slider__pill" aria-hidden="true"></span>
+      </div>`;
+    this.pillEl = this.dotsEl.querySelector(".slider__pill");
     this.dotsEl.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("click", () => {
-        // Slot i navigates to firstVisible = i. Every slot is a valid
-        // navigation target — including the current one (no-op).
-        const slot = Number(btn.dataset.slot);
-        this.scrollToIndex(slot);
+        const tile = Number(btn.dataset.tile);
+        const K2 = this.computeVisibility().visibleCount;
+        const maxIdx = Math.max(0, N - K2);
+        // If clicked tile is BEFORE the pill's window → make it first-visible.
+        // If it's AFTER  the window → make it last-visible (tile - K + 1).
+        // If it's WITHIN the window → no-op (target = current firstVisibleIndex).
+        let target;
+        if (tile < this.firstVisibleIndex) target = tile;
+        else if (tile >= this.firstVisibleIndex + K2) target = Math.min(maxIdx, tile - K2 + 1);
+        else target = this.firstVisibleIndex;
+        this.scrollToIndex(target);
       });
     });
   }
@@ -368,23 +380,27 @@ export class PodcastSlider {
   _updatePillPosition(firstVisible, K) {
     const N = this.data.length;
     const pillWidth = K * 6 + Math.max(0, K - 1) * 5;
+    if (this.pillEl) {
+      // 11 = dot-width (6) + gap (5). Pill's left edge sits exactly on
+      // slot `firstVisible`; transitioning translateX gives the sliding
+      // effect the user asked for.
+      this.pillEl.style.width = `${pillWidth}px`;
+      this.pillEl.style.transform = `translateX(${firstVisible * 11}px)`;
+    }
     const btns = this.dotsEl.querySelectorAll("button");
-    btns.forEach((btn, s) => {
-      const isPill = s === firstVisible;
-      btn.classList.toggle("slider__dot--active", isPill);
-      // Always set an explicit numeric width so the CSS width transition
-      // can animate cleanly between values (empty → number never fires).
-      btn.style.width = isPill ? `${pillWidth}px` : `6px`;
-      if (isPill) {
+    btns.forEach((btn, tile) => {
+      const covered = tile >= firstVisible && tile < firstVisible + K;
+      btn.classList.toggle("slider__dot--covered", covered);
+      if (covered) {
         btn.setAttribute(
           "aria-label",
-          `Aktuell sichtbar: Podcast ${firstVisible + 1} bis ${firstVisible + K} von ${N}`
+          `Aktuell sichtbar: Podcast ${tile + 1} von ${N}`
         );
         btn.setAttribute("aria-current", "true");
       } else {
         btn.setAttribute(
           "aria-label",
-          `Zu Podcast ${s + 1} von ${N} springen`
+          `Zu Podcast ${tile + 1} von ${N} springen`
         );
         btn.removeAttribute("aria-current");
       }
