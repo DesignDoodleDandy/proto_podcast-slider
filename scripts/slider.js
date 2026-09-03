@@ -186,6 +186,12 @@ export class PodcastSlider {
     this.scrollbarEl = this.root.querySelector(".slider__scrollbar");
     this.scrollbarHandle = this.root.querySelector(".slider__scrollbar-handle");
     this.tiles = Array.from(this.root.querySelectorAll(".podcast-tile"));
+    // Only the scrollbar variant already has its handle in the DOM at
+    // construction time; the pill is created lazily inside _buildDotsSkeleton.
+    if (this.scrollbarEl && this.scrollbarHandle) {
+      this._enableHandleDrag(this.scrollbarHandle, this.scrollbarEl);
+      this._enableTrackClickJump(this.scrollbarEl, this.scrollbarHandle);
+    }
   }
 
   bind() {
@@ -370,6 +376,74 @@ export class PodcastSlider {
     }
   }
 
+  /** Pointer-drag on the pill / scrollbar-handle. Maps handle-space
+      motion to track-scroll motion so dragging the handle scrolls the
+      tiles proportionally. During drag we disable the handle's CSS
+      transition so it follows the pointer without lag; the settle timer
+      then snaps to the nearest tile on release. */
+  _enableHandleDrag(handleEl, containerEl) {
+    handleEl.style.touchAction = "none";
+    handleEl.style.cursor = "grab";
+    if (handleEl.classList.contains("slider__pill")) {
+      handleEl.style.pointerEvents = "auto";
+    }
+
+    handleEl.addEventListener("pointerdown", (e) => {
+      // Only left mouse button (or touch / pen).
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      // setPointerCapture throws for synthesized events without an active
+      // pointer; guard so the rest of the handler still runs.
+      try { handleEl.setPointerCapture(e.pointerId); } catch (_) {}
+      handleEl.style.cursor = "grabbing";
+      handleEl.style.transition = "none";
+
+      const containerRect = containerEl.getBoundingClientRect();
+      const handleRect = handleEl.getBoundingClientRect();
+      const dragRange = Math.max(1, containerRect.width - handleRect.width);
+      const trackScrollMax = this.track.scrollWidth - this.track.clientWidth;
+      const startPointerX = e.clientX;
+      const startScroll = this.track.scrollLeft;
+
+      const onMove = (ev) => {
+        const dx = ev.clientX - startPointerX;
+        const scrollDelta = (dx / dragRange) * trackScrollMax;
+        const newScroll = Math.max(
+          0,
+          Math.min(trackScrollMax, startScroll + scrollDelta)
+        );
+        this.track.scrollLeft = newScroll;
+      };
+      const onUp = () => {
+        handleEl.removeEventListener("pointermove", onMove);
+        handleEl.removeEventListener("pointerup", onUp);
+        handleEl.removeEventListener("pointercancel", onUp);
+        handleEl.style.cursor = "grab";
+        handleEl.style.transition = "";
+        // The scroll listener's settle timer will snap to the nearest
+        // tile 150 ms after the last scroll event.
+      };
+      handleEl.addEventListener("pointermove", onMove);
+      handleEl.addEventListener("pointerup", onUp);
+      handleEl.addEventListener("pointercancel", onUp);
+    });
+  }
+
+  /** Click on the empty track area (left / right of the handle) →
+      step −1 / +1, matching the prev / next button behavior. */
+  _enableTrackClickJump(containerEl, handleEl) {
+    containerEl.addEventListener("click", (e) => {
+      // Ignore clicks on the handle itself or on any inner interactive
+      // element (dot buttons keep their existing per-tile navigation).
+      if (e.target === handleEl || handleEl.contains(e.target)) return;
+      if (e.target !== containerEl && e.target.tagName === "BUTTON") return;
+      const handleRect = handleEl.getBoundingClientRect();
+      if (e.clientX < handleRect.left) this.step(-1);
+      else if (e.clientX > handleRect.right) this.step(1);
+    });
+    containerEl.style.cursor = "pointer";
+  }
+
   /** Scrollbar variant — a single fixed-width track (matching the dots
       variant's total width, 11N − 5 px) with a handle whose width is
       proportional to K/N and whose position slides with firstVisible.
@@ -406,6 +480,13 @@ export class PodcastSlider {
         <span class="slider__pill" aria-hidden="true"></span>
       </div>`;
     this.pillEl = this.dotsEl.querySelector(".slider__pill");
+    const dotsTrackEl = this.dotsEl.querySelector(".slider__dots-track");
+    // Drag on pill + click on empty track area → same behavior as
+    // clicking prev/next, so the dots row feels like a real scrollbar.
+    if (this.pillEl && dotsTrackEl) {
+      this._enableHandleDrag(this.pillEl, dotsTrackEl);
+      this._enableTrackClickJump(dotsTrackEl, this.pillEl);
+    }
     this.dotsEl.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("click", () => {
         const tile = Number(btn.dataset.tile);
