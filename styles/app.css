@@ -313,31 +313,17 @@ img { display: block; max-width: 100%; }
   pointer-events: none;
 }
 
-/* Overflow indicator for the windowed-dots variant — Instagram-style
-   smaller dot that tells the user there are more tiles beyond the window. */
-.slider__dot--overflow {
-  width: 3px;
-  height: 3px;
-  border-radius: 1.5px;
-  opacity: 0.6;
-  cursor: default;
-  pointer-events: none;
-  transition: opacity 220ms ease;
-}
-
 /* Windowed-dots viewport — clips the full N-dot inner track so only the
-   current window is visible. Sliding the inner track via translateX
-   makes the dots physically wander sideways, giving a clear sense of
-   motion even when the pill stays at the same slot relative to the
-   window. */
+   current window plus its two "peek" neighbours are visible. Sliding
+   the inner track via translateX makes the dots physically wander
+   sideways, giving a clear sense of motion even when the pill stays
+   at the same slot relative to the window. */
 .slider__dots-viewport--windowed {
   position: relative;
-  /* 10 large dots × 6 px + 9 gaps × 5 px = 105 px */
-  width: 105px;
+  /* 12 dot slots × 6 px + 11 gaps × 5 px = 127 px (10 window + 2 peek). */
+  width: 127px;
   height: 6px;
   overflow: hidden;
-  padding-inline: 8px; /* room for overflow-indicator dots (3 px + 5 px gap) */
-  box-sizing: content-box;
 }
 
 .slider__dots-inner {
@@ -350,16 +336,12 @@ img { display: block; max-width: 100%; }
   transition: transform 320ms cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 
-.slider__dot--overflow-left,
-.slider__dot--overflow-right {
-  position: absolute;
-  top: 50%;
-  translate: 0 -50%;
-  z-index: 2;
-}
-
-.slider__dot--overflow-left { left: 0; }
-.slider__dot--overflow-right { right: 0; }
+/* One neighbour dot on either side of the window is shown fully at
+   50 % opacity — the "peek" that hints at more content without the
+   half-clipped edge look. Further-out dots stay in the DOM but hidden
+   (kept for smooth cross-fade as the window slides through them). */
+.slider__dot--peek { opacity: 0.5; }
+.slider__dot--outside { opacity: 0; }
 
 /* --------------------------------------------------------------
    Scrollbar-style indicator (third variant)

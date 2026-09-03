@@ -444,14 +444,10 @@ export class PodcastSlider {
           ${dotsHtml}
           <span class="slider__pill" aria-hidden="true"></span>
         </div>
-        <span class="slider__dot slider__dot--overflow slider__dot--overflow-left" aria-hidden="true"></span>
-        <span class="slider__dot slider__dot--overflow slider__dot--overflow-right" aria-hidden="true"></span>
       </div>`;
 
     this.pillEl = this.dotsEl.querySelector(".slider__pill");
     this.dotsInnerEl = this.dotsEl.querySelector(".slider__dots-inner");
-    this.overflowLeftEl = this.dotsEl.querySelector(".slider__dot--overflow-left");
-    this.overflowRightEl = this.dotsEl.querySelector(".slider__dot--overflow-right");
     const viewportEl = this.dotsEl.querySelector(".slider__dots-viewport");
 
     if (this.pillEl && viewportEl) {
@@ -478,27 +474,32 @@ export class PodcastSlider {
     if (!this.pillEl || !this.dotsInnerEl) return;
     const N = this.data.length;
     const pillWidth = K * 6 + Math.max(0, K - 1) * 5;
+    const windowStart = win.start;
+    const windowEnd = win.end;
 
-    // Slide the inner track so window starts at viewport x=0. Any
-    // change in win.start now produces a smooth translateX animation,
-    // giving the user a clear sense of motion — even in the middle
-    // where the pill's slot within the window doesn't change.
-    this.dotsInnerEl.style.transform = `translateX(${-win.start * WIN_DOT_STRIDE}px)`;
+    // Slide the inner track so the LEFT peek slot lines up with viewport
+    // x=0 whenever a peek dot exists on that side; otherwise slide so the
+    // window itself starts at viewport x=0.
+    const shiftSlots = win.leftOverflow ? windowStart - 1 : windowStart;
+    this.dotsInnerEl.style.transform = `translateX(${-shiftSlots * WIN_DOT_STRIDE}px)`;
 
-    // Pill lives inside the inner track and uses the absolute tile
-    // index, so it inherits the inner track's slide automatically and
-    // still visually sits over the correct dot.
+    // Pill sits inside the inner track — its translateX stays the tile
+    // index times stride, so it inherits the inner track's slide.
     this.pillEl.style.width = `${pillWidth}px`;
     this.pillEl.style.transform = `translateX(${firstVisible * WIN_DOT_STRIDE}px)`;
 
-    // Overflow indicators fade in / out based on remaining tiles beyond
-    // the window on either side.
-    if (this.overflowLeftEl) this.overflowLeftEl.style.opacity = win.leftOverflow ? "0.6" : "0";
-    if (this.overflowRightEl) this.overflowRightEl.style.opacity = win.rightOverflow ? "0.6" : "0";
-
-    // Fade dots under the pill (covered tiles) and update labels.
+    // Dots outside the window fade out (opacity 0); the ONE immediate
+    // neighbour on each side is shown fully at 50 % opacity as a "peek"
+    // — replaces the earlier half-clipped edge look with a fully visible
+    // but transparent hint that more tiles exist beyond.
     this.dotsEl.querySelectorAll("button").forEach((btn) => {
       const tile = Number(btn.dataset.tile);
+      const inWindow = tile >= windowStart && tile <= windowEnd;
+      const isPeek =
+        (!inWindow) &&
+        (tile === windowStart - 1 || tile === windowEnd + 1);
+      btn.classList.toggle("slider__dot--peek", isPeek);
+      btn.classList.toggle("slider__dot--outside", !inWindow && !isPeek);
       const covered = tile >= firstVisible && tile < firstVisible + K;
       btn.classList.toggle("slider__dot--covered", covered);
       if (covered) {
