@@ -425,41 +425,40 @@ export class PodcastSlider {
   }
 
   _buildWindowedDotsSkeleton(win, K) {
-    // Cache-key by window bounds + overflow flags so we only rebuild
-    // when the window actually changes (not on every scroll frame).
-    const key = `${win.start}|${win.end}|${win.leftOverflow ? 1 : 0}|${win.rightOverflow ? 1 : 0}|K=${K}`;
-    if (this._windowKey === key) return;
-    this._windowKey = key;
-
+    // Build only ONCE per data-set. All N dots live in a fixed inner
+    // track; the "window" is realized by translating the inner track
+    // horizontally, so animating windowStart smoothly slides the entire
+    // dot row — the user sees the dots physically move even when the
+    // pill's slot within the window stays constant.
     const N = this.data.length;
-    const dotsHtml = Array.from(
-      { length: win.end - win.start + 1 },
-      (_, i) => {
-        const tile = win.start + i;
-        return `<button class="slider__dot" type="button" data-tile="${tile}"></button>`;
-      }
+    if (this._skeletonN === N) return;
+    this._skeletonN = N;
+
+    const dotsHtml = Array.from({ length: N }, (_, t) =>
+      `<button class="slider__dot" type="button" data-tile="${t}"></button>`
     ).join("");
-    const leftInd = win.leftOverflow
-      ? `<span class="slider__dot slider__dot--overflow" aria-hidden="true"></span>`
-      : "";
-    const rightInd = win.rightOverflow
-      ? `<span class="slider__dot slider__dot--overflow" aria-hidden="true"></span>`
-      : "";
 
     this.dotsEl.innerHTML = `
-      <div class="slider__dots-track slider__dots-track--windowed">
-        ${leftInd}
-        ${dotsHtml}
-        ${rightInd}
-        <span class="slider__pill" aria-hidden="true"></span>
+      <div class="slider__dots-viewport slider__dots-viewport--windowed">
+        <div class="slider__dots-inner">
+          ${dotsHtml}
+          <span class="slider__pill" aria-hidden="true"></span>
+        </div>
+        <span class="slider__dot slider__dot--overflow slider__dot--overflow-left" aria-hidden="true"></span>
+        <span class="slider__dot slider__dot--overflow slider__dot--overflow-right" aria-hidden="true"></span>
       </div>`;
 
     this.pillEl = this.dotsEl.querySelector(".slider__pill");
-    const dotsTrackEl = this.dotsEl.querySelector(".slider__dots-track");
-    if (this.pillEl && dotsTrackEl) {
-      this._enableHandleDrag(this.pillEl, dotsTrackEl);
-      this._enableTrackClickJump(dotsTrackEl, this.pillEl);
+    this.dotsInnerEl = this.dotsEl.querySelector(".slider__dots-inner");
+    this.overflowLeftEl = this.dotsEl.querySelector(".slider__dot--overflow-left");
+    this.overflowRightEl = this.dotsEl.querySelector(".slider__dot--overflow-right");
+    const viewportEl = this.dotsEl.querySelector(".slider__dots-viewport");
+
+    if (this.pillEl && viewportEl) {
+      this._enableHandleDrag(this.pillEl, viewportEl);
+      this._enableTrackClickJump(viewportEl, this.pillEl);
     }
+
     this.dotsEl.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("click", () => {
         const tile = Number(btn.dataset.tile);
@@ -476,17 +475,28 @@ export class PodcastSlider {
   }
 
   _updateWindowedPill(firstVisible, K, win) {
-    if (!this.pillEl) return;
+    if (!this.pillEl || !this.dotsInnerEl) return;
     const N = this.data.length;
     const pillWidth = K * 6 + Math.max(0, K - 1) * 5;
-    // Pill's x-offset within the window:
-    //   leftInd (if any) takes WIN_OVERFLOW_LEAD px, then WIN_DOT_STRIDE
-    //   per slot from window start to firstVisible.
-    const offset = (win.leftOverflow ? WIN_OVERFLOW_LEAD : 0)
-      + (firstVisible - win.start) * WIN_DOT_STRIDE;
+
+    // Slide the inner track so window starts at viewport x=0. Any
+    // change in win.start now produces a smooth translateX animation,
+    // giving the user a clear sense of motion — even in the middle
+    // where the pill's slot within the window doesn't change.
+    this.dotsInnerEl.style.transform = `translateX(${-win.start * WIN_DOT_STRIDE}px)`;
+
+    // Pill lives inside the inner track and uses the absolute tile
+    // index, so it inherits the inner track's slide automatically and
+    // still visually sits over the correct dot.
     this.pillEl.style.width = `${pillWidth}px`;
-    this.pillEl.style.transform = `translateX(${offset}px)`;
-    // Fade / highlight regular dots (buttons) inside the window.
+    this.pillEl.style.transform = `translateX(${firstVisible * WIN_DOT_STRIDE}px)`;
+
+    // Overflow indicators fade in / out based on remaining tiles beyond
+    // the window on either side.
+    if (this.overflowLeftEl) this.overflowLeftEl.style.opacity = win.leftOverflow ? "0.6" : "0";
+    if (this.overflowRightEl) this.overflowRightEl.style.opacity = win.rightOverflow ? "0.6" : "0";
+
+    // Fade dots under the pill (covered tiles) and update labels.
     this.dotsEl.querySelectorAll("button").forEach((btn) => {
       const tile = Number(btn.dataset.tile);
       const covered = tile >= firstVisible && tile < firstVisible + K;

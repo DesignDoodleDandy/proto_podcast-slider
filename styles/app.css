@@ -322,7 +322,44 @@ img { display: block; max-width: 100%; }
   opacity: 0.6;
   cursor: default;
   pointer-events: none;
+  transition: opacity 220ms ease;
 }
+
+/* Windowed-dots viewport — clips the full N-dot inner track so only the
+   current window is visible. Sliding the inner track via translateX
+   makes the dots physically wander sideways, giving a clear sense of
+   motion even when the pill stays at the same slot relative to the
+   window. */
+.slider__dots-viewport--windowed {
+  position: relative;
+  /* 10 large dots × 6 px + 9 gaps × 5 px = 105 px */
+  width: 105px;
+  height: 6px;
+  overflow: hidden;
+  padding-inline: 8px; /* room for overflow-indicator dots (3 px + 5 px gap) */
+  box-sizing: content-box;
+}
+
+.slider__dots-inner {
+  position: relative;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  line-height: 0;
+  will-change: transform;
+  transition: transform 320ms cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+
+.slider__dot--overflow-left,
+.slider__dot--overflow-right {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 2;
+}
+
+.slider__dot--overflow-left { left: 0; }
+.slider__dot--overflow-right { right: 0; }
 
 /* --------------------------------------------------------------
    Scrollbar-style indicator (third variant)
