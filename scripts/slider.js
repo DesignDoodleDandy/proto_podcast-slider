@@ -125,8 +125,25 @@ export class PodcastSlider {
            </div>`
         : "";
 
+    const indicatorMarkup = () => {
+      if (this.mode === "dots") {
+        return `<ul class="slider__dots" role="tablist" aria-label="Podcast-Position"></ul>`;
+      }
+      if (this.mode === "scrollbar") {
+        return `<div
+          class="slider__scrollbar"
+          role="scrollbar"
+          aria-controls="${this.root.id}-track"
+          aria-orientation="horizontal"
+        >
+          <div class="slider__scrollbar-handle" aria-hidden="true"></div>
+        </div>`;
+      }
+      return "";
+    };
+
     const control =
-      this.mode === "dots"
+      this.mode === "dots" || this.mode === "scrollbar"
         ? `<div class="slider__control">
              <podcast-test-ghost-button
                size="medium"
@@ -135,7 +152,7 @@ export class PodcastSlider {
                accessibility-label="Vorheriger Podcast"
                class="js-prev"
              ></podcast-test-ghost-button>
-             <ul class="slider__dots" role="tablist" aria-label="Podcast-Position"></ul>
+             ${indicatorMarkup()}
              <podcast-test-ghost-button
                size="medium"
                icon="right"
@@ -162,9 +179,12 @@ export class PodcastSlider {
       ${control ? `<div class="podcast-section__container podcast-section__container--center">${control}</div>` : ""}`;
 
     this.track = this.root.querySelector(".slider__track");
+    if (!this.track.id) this.track.id = `${this.root.id}-track`;
     this.prevBtn = this.root.querySelector(".js-prev");
     this.nextBtn = this.root.querySelector(".js-next");
     this.dotsEl = this.root.querySelector(".slider__dots");
+    this.scrollbarEl = this.root.querySelector(".slider__scrollbar");
+    this.scrollbarHandle = this.root.querySelector(".slider__scrollbar-handle");
     this.tiles = Array.from(this.root.querySelectorAll(".podcast-tile"));
   }
 
@@ -332,18 +352,44 @@ export class PodcastSlider {
   }
 
   renderDots(firstVisible, K) {
-    if (!this.dotsEl) return;
     if (firstVisible == null || K == null) {
       const v = this.computeVisibility();
       firstVisible = v.firstVisible;
       K = v.visibleCount;
     }
-    // Build the dot skeleton ONCE per K — a stable DOM lets CSS width /
-    // background transitions run cleanly instead of being torn down on
-    // every scroll frame. On firstVisible change we only toggle classes
-    // and inline widths on the existing nodes.
-    if (this._skeletonK !== K) this._buildDotsSkeleton(K);
-    this._updatePillPosition(firstVisible, K);
+    if (this.dotsEl) {
+      // Build the dot skeleton ONCE per K — a stable DOM lets CSS width /
+      // background transitions run cleanly instead of being torn down on
+      // every scroll frame. On firstVisible change we only toggle classes
+      // and inline widths on the existing nodes.
+      if (this._skeletonK !== K) this._buildDotsSkeleton(K);
+      this._updatePillPosition(firstVisible, K);
+    }
+    if (this.scrollbarEl) {
+      this._updateScrollbarPosition(firstVisible, K);
+    }
+  }
+
+  /** Scrollbar variant — a single fixed-width track (matching the dots
+      variant's total width, 11N − 5 px) with a handle whose width is
+      proportional to K/N and whose position slides with firstVisible.
+      Beats N-per-tile dots for very large N. */
+  _updateScrollbarPosition(firstVisible, K) {
+    if (!this.scrollbarHandle || !this.scrollbarEl) return;
+    const N = this.data.length;
+    const trackW = this.scrollbarEl.getBoundingClientRect().width;
+    if (!trackW) return;
+    // Handle spans a proportional fraction of the track (visible / total).
+    const handleW = Math.max(6, Math.round(trackW * (K / N)));
+    // Handle slides across (trackW − handleW) as firstVisible goes 0..N-K.
+    const maxIdx = Math.max(1, N - K);
+    const maxPos = Math.max(0, trackW - handleW);
+    const pos = Math.round(maxPos * (firstVisible / maxIdx));
+    this.scrollbarHandle.style.width = `${handleW}px`;
+    this.scrollbarHandle.style.transform = `translateX(${pos}px)`;
+    this.scrollbarEl.setAttribute("aria-valuenow", String(firstVisible));
+    this.scrollbarEl.setAttribute("aria-valuemin", "0");
+    this.scrollbarEl.setAttribute("aria-valuemax", String(maxIdx));
   }
 
   _buildDotsSkeleton(K) {

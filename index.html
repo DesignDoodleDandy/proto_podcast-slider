@@ -8,7 +8,7 @@
       name="description"
       content="Responsiver Prototyp zweier Podcast-Slider-Varianten für einen HMG Nutzertest."
     />
-    <link rel="stylesheet" href="styles/app.css?v=16" />
+    <link rel="stylesheet" href="styles/app.css?v=17" />
 
     <script type="module">
       // Load HMG Design System Web Components with our project prefix.
@@ -29,8 +29,9 @@
       // Only after the theme has upgraded do we render — otherwise our
       // components paint before their tokens are available.
       customElements.whenDefined("podcast-test-theme-hb").then(async () => {
-        const { PodcastSlider } = await import("./scripts/slider.js?v=16");
+        const { PodcastSlider } = await import("./scripts/slider.js?v=17");
         new PodcastSlider(document.getElementById("variant-b"), { mode: "dots" });
+        new PodcastSlider(document.getElementById("variant-c"), { mode: "scrollbar" });
       });
     </script>
   </head>
@@ -48,7 +49,7 @@
           </podcast-test-rich-text>
         </div>
 
-        <section id="variant-b" aria-label="Podcast-Slider"></section>
+        <section id="variant-b" aria-label="Podcast-Slider mit Dots-Indicator"></section>
 
         <div class="page__prose">
           <podcast-test-rich-text mode="brand" size="large">
@@ -56,6 +57,17 @@
               Duis autem vel eum iriure dolor in hendrerit in vulputate velit
               esse molestie consequat, vel illum dolore eu feugiat nulla
               facilisis at vero eros et accumsan et iusto odio dignissim.
+            </p>
+          </podcast-test-rich-text>
+        </div>
+
+        <section id="variant-c" aria-label="Podcast-Slider mit Scrollbar-Indicator"></section>
+
+        <div class="page__prose">
+          <podcast-test-rich-text mode="brand" size="large">
+            <p>
+              <b>Nam liber tempor cum soluta nobis eleifend option congue nihil
+              imperdiet doming id quod mazim placerat facer possim assum.</b>
             </p>
           </podcast-test-rich-text>
         </div>

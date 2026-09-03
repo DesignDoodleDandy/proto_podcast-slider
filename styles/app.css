@@ -313,6 +313,36 @@ img { display: block; max-width: 100%; }
   pointer-events: none;
 }
 
+/* --------------------------------------------------------------
+   Scrollbar-style indicator (third variant)
+   Fixed-width track — same height as a dot, max width matches the
+   dots row's total width (11N − 5 = 105 px for 10 podcasts). Handle
+   width is proportional to K/N; handle position slides with
+   firstVisible, same easing as the dots pill.
+   ------------------------------------------------------------ */
+.slider__scrollbar {
+  position: relative;
+  width: 105px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--hmg-des-color-foreground-interaction-normal-disabled, #767676);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.slider__scrollbar-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--hmg-des-color-foreground-neutral-default-normal, #000);
+  transition:
+    transform 320ms cubic-bezier(0.22, 0.8, 0.24, 1),
+    width 220ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  will-change: transform, width;
+}
+
 /* The active pill — absolute-positioned overlay that SLIDES via
    translateX between slot positions instead of shrinking / re-growing. */
 .slider__pill {
