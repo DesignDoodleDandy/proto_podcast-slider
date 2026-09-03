@@ -67,6 +67,11 @@ const DIVIDER_W = 1;
 // Distance from one tile's left edge to the next tile's left edge.
 const STRIDE = TILE_W + GAP + DIVIDER_W + GAP;
 
+// Windowed-dots layout: a large dot is 6 × 6 with 5 px between dots, an
+// overflow indicator (small dot) is 3 × 3 with 5 px gap on the inside.
+const WIN_DOT_STRIDE = 11; // 6 (dot) + 5 (gap)
+const WIN_OVERFLOW_LEAD = 3 + 5; // overflow dot width + trailing gap
+
 export class PodcastSlider {
   constructor(root, { mode = "paged", data = PODCASTS } = {}) {
     this.root = root;
@@ -126,7 +131,7 @@ export class PodcastSlider {
         : "";
 
     const indicatorMarkup = () => {
-      if (this.mode === "dots") {
+      if (this.mode === "dots" || this.mode === "windowed-dots") {
         return `<ul class="slider__dots" role="tablist" aria-label="Podcast-Position"></ul>`;
       }
       if (this.mode === "scrollbar") {
@@ -143,7 +148,7 @@ export class PodcastSlider {
     };
 
     const control =
-      this.mode === "dots" || this.mode === "scrollbar"
+      this.mode === "dots" || this.mode === "windowed-dots" || this.mode === "scrollbar"
         ? `<div class="slider__control">
              <podcast-test-ghost-button
                size="medium"
@@ -364,16 +369,142 @@ export class PodcastSlider {
       K = v.visibleCount;
     }
     if (this.dotsEl) {
-      // Build the dot skeleton ONCE per K — a stable DOM lets CSS width /
-      // background transitions run cleanly instead of being torn down on
-      // every scroll frame. On firstVisible change we only toggle classes
-      // and inline widths on the existing nodes.
-      if (this._skeletonK !== K) this._buildDotsSkeleton(K);
-      this._updatePillPosition(firstVisible, K);
+      if (this.mode === "windowed-dots") {
+        // Rebuild only when the window shifts; positions inside the window
+        // change every scroll frame via _updateWindowedPill().
+        const win = this._computeWindow(firstVisible, K);
+        this._buildWindowedDotsSkeleton(win, K);
+        this._updateWindowedPill(firstVisible, K, win);
+      } else {
+        // Standard dots mode — build once per K, then toggle.
+        if (this._skeletonK !== K) this._buildDotsSkeleton(K);
+        this._updatePillPosition(firstVisible, K);
+      }
     }
     if (this.scrollbarEl) {
       this._updateScrollbarPosition(firstVisible, K);
     }
+  }
+
+  /** Compute the current window of large dots for the windowed-dots mode.
+      MAX = maximum "tile-count" the row visualizes at once (pill's K plus
+      surrounding dots). If N ≤ MAX the whole indicator fits without
+      overflow indicators; otherwise the window slides so the pill stays
+      roughly centered, and small dots on the outside flag more content. */
+  _computeWindow(firstVisible, K, MAX = 10) {
+    const N = this.data.length;
+    if (N <= MAX) {
+      return {
+        start: 0,
+        end: N - 1,
+        leftOverflow: false,
+        rightOverflow: false,
+      };
+    }
+    const additional = Math.max(0, MAX - K);
+    let leftWant = Math.floor(additional / 2);
+    let rightWant = additional - leftWant;
+    const availLeft = firstVisible;
+    const availRight = N - firstVisible - K;
+    let leftShow = Math.min(leftWant, availLeft);
+    let rightShow = Math.min(rightWant, availRight);
+    // Redistribute unused capacity to the opposite side so the window
+    // always shows `additional` extra dots when possible.
+    const leftExtra = leftWant - leftShow;
+    const rightExtra = rightWant - rightShow;
+    leftShow = Math.min(availLeft, leftShow + rightExtra);
+    rightShow = Math.min(availRight, rightShow + leftExtra);
+    const start = firstVisible - leftShow;
+    const end = firstVisible + K - 1 + rightShow;
+    return {
+      start,
+      end,
+      leftOverflow: start > 0,
+      rightOverflow: end < N - 1,
+    };
+  }
+
+  _buildWindowedDotsSkeleton(win, K) {
+    // Cache-key by window bounds + overflow flags so we only rebuild
+    // when the window actually changes (not on every scroll frame).
+    const key = `${win.start}|${win.end}|${win.leftOverflow ? 1 : 0}|${win.rightOverflow ? 1 : 0}|K=${K}`;
+    if (this._windowKey === key) return;
+    this._windowKey = key;
+
+    const N = this.data.length;
+    const dotsHtml = Array.from(
+      { length: win.end - win.start + 1 },
+      (_, i) => {
+        const tile = win.start + i;
+        return `<button class="slider__dot" type="button" data-tile="${tile}"></button>`;
+      }
+    ).join("");
+    const leftInd = win.leftOverflow
+      ? `<span class="slider__dot slider__dot--overflow" aria-hidden="true"></span>`
+      : "";
+    const rightInd = win.rightOverflow
+      ? `<span class="slider__dot slider__dot--overflow" aria-hidden="true"></span>`
+      : "";
+
+    this.dotsEl.innerHTML = `
+      <div class="slider__dots-track slider__dots-track--windowed">
+        ${leftInd}
+        ${dotsHtml}
+        ${rightInd}
+        <span class="slider__pill" aria-hidden="true"></span>
+      </div>`;
+
+    this.pillEl = this.dotsEl.querySelector(".slider__pill");
+    const dotsTrackEl = this.dotsEl.querySelector(".slider__dots-track");
+    if (this.pillEl && dotsTrackEl) {
+      this._enableHandleDrag(this.pillEl, dotsTrackEl);
+      this._enableTrackClickJump(dotsTrackEl, this.pillEl);
+    }
+    this.dotsEl.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tile = Number(btn.dataset.tile);
+        const K2 = this.computeVisibility().visibleCount;
+        const maxIdx = Math.max(0, N - K2);
+        let target;
+        if (tile < this.firstVisibleIndex) target = tile;
+        else if (tile >= this.firstVisibleIndex + K2)
+          target = Math.min(maxIdx, tile - K2 + 1);
+        else target = this.firstVisibleIndex;
+        this.scrollToIndex(target);
+      });
+    });
+  }
+
+  _updateWindowedPill(firstVisible, K, win) {
+    if (!this.pillEl) return;
+    const N = this.data.length;
+    const pillWidth = K * 6 + Math.max(0, K - 1) * 5;
+    // Pill's x-offset within the window:
+    //   leftInd (if any) takes WIN_OVERFLOW_LEAD px, then WIN_DOT_STRIDE
+    //   per slot from window start to firstVisible.
+    const offset = (win.leftOverflow ? WIN_OVERFLOW_LEAD : 0)
+      + (firstVisible - win.start) * WIN_DOT_STRIDE;
+    this.pillEl.style.width = `${pillWidth}px`;
+    this.pillEl.style.transform = `translateX(${offset}px)`;
+    // Fade / highlight regular dots (buttons) inside the window.
+    this.dotsEl.querySelectorAll("button").forEach((btn) => {
+      const tile = Number(btn.dataset.tile);
+      const covered = tile >= firstVisible && tile < firstVisible + K;
+      btn.classList.toggle("slider__dot--covered", covered);
+      if (covered) {
+        btn.setAttribute("aria-current", "true");
+        btn.setAttribute(
+          "aria-label",
+          `Aktuell sichtbar: Podcast ${tile + 1} von ${N}`
+        );
+      } else {
+        btn.removeAttribute("aria-current");
+        btn.setAttribute(
+          "aria-label",
+          `Zu Podcast ${tile + 1} von ${N} springen`
+        );
+      }
+    });
   }
 
   /** Pointer-drag on the pill / scrollbar-handle. Maps handle-space
