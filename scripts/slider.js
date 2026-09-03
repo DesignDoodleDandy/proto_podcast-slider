@@ -387,10 +387,16 @@ export class PodcastSlider {
   }
 
   /** Compute the current window of large dots for the windowed-dots mode.
-      MAX = maximum "tile-count" the row visualizes at once (pill's K plus
-      surrounding dots). If N ≤ MAX the whole indicator fits without
-      overflow indicators; otherwise the window slides so the pill stays
-      roughly centered, and small dots on the outside flag more content. */
+      Strategy: keep the window anchored at the LEFT so the pill visibly
+      walks through slots 0 … (MAX − K) while the dot row stays static —
+      "der aktive Slot rutscht bis an den Rand". Once the pill reaches
+      the right edge of the window (slot MAX − K), it stops moving
+      relative to the window and the window itself starts sliding one
+      slot per firstVisible step — the dots physically slide underneath
+      the pill until firstVisible hits its maximum. The right peek dot
+      stays visible until the very last position, matching the user's
+      "the last faded dot should stay while more elements exist on that
+      side". */
   _computeWindow(firstVisible, K, MAX = 10) {
     const N = this.data.length;
     if (N <= MAX) {
@@ -401,21 +407,10 @@ export class PodcastSlider {
         rightOverflow: false,
       };
     }
-    const additional = Math.max(0, MAX - K);
-    let leftWant = Math.floor(additional / 2);
-    let rightWant = additional - leftWant;
-    const availLeft = firstVisible;
-    const availRight = N - firstVisible - K;
-    let leftShow = Math.min(leftWant, availLeft);
-    let rightShow = Math.min(rightWant, availRight);
-    // Redistribute unused capacity to the opposite side so the window
-    // always shows `additional` extra dots when possible.
-    const leftExtra = leftWant - leftShow;
-    const rightExtra = rightWant - rightShow;
-    leftShow = Math.min(availLeft, leftShow + rightExtra);
-    rightShow = Math.min(availRight, rightShow + leftExtra);
-    const start = firstVisible - leftShow;
-    const end = firstVisible + K - 1 + rightShow;
+    // MAX − K = 4 for K=6, MAX=10: pill can walk through 5 slots (0..4)
+    // before the window has to move.
+    const start = Math.max(0, Math.min(N - MAX, firstVisible - (MAX - K)));
+    const end = start + MAX - 1;
     return {
       start,
       end,
@@ -477,10 +472,13 @@ export class PodcastSlider {
     const windowStart = win.start;
     const windowEnd = win.end;
 
-    // Slide the inner track so the LEFT peek slot lines up with viewport
-    // x=0 whenever a peek dot exists on that side; otherwise slide so the
-    // window itself starts at viewport x=0.
-    const shiftSlots = win.leftOverflow ? windowStart - 1 : windowStart;
+    // Slide the inner track so the LEFT peek slot ALWAYS lines up with
+    // viewport x=0 — even at windowStart=0 where no left peek exists yet.
+    // Keeping the alignment fixed means the RIGHT peek stays at viewport
+    // x=121 for every window position, so a peek dot never "jumps" from
+    // one viewport slot to another as the window shifts. Instead new
+    // peek dots slide in cleanly from off-screen right (or left).
+    const shiftSlots = windowStart - 1;
     this.dotsInnerEl.style.transform = `translateX(${-shiftSlots * WIN_DOT_STRIDE}px)`;
 
     // Pill sits inside the inner track — its translateX stays the tile
