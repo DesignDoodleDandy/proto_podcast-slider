@@ -16,14 +16,14 @@ html,
 body {
   margin: 0;
   padding: 0;
-  /* Pale grey outside the 1000 px content column. */
-  background: #eaeaea;
 }
 
-/* The theme component acts as the page shell — give it space to breathe. */
+/* Theme wrapper covers the full viewport; its background paints the
+   area OUTSIDE the 1000 px content column. */
 podcast-test-theme-hb {
   display: block;
   min-height: 100vh;
+  background: var(--hmg-des-color-background-secondary);
 }
 
 img { display: block; max-width: 100%; }
@@ -36,7 +36,7 @@ img { display: block; max-width: 100%; }
 .page {
   max-width: 1000px;
   margin-inline: auto;
-  background: #ffffff;
+  background: var(--hmg-des-color-background-primary);
   display: flex;
   flex-direction: column;
   gap: 60px;
