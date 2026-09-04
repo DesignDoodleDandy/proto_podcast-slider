@@ -19,15 +19,16 @@ body {
 }
 
 /* Theme wrapper covers the full viewport; its background paints the
-   area OUTSIDE the 1000 px content column. The theme component ships
-   with its own `background: var(--hmg-des-color-background-primary)`
-   selected via Angular's `_nghost-*` attribute (specificity 0,1,0) —
-   higher than a bare element selector. `!important` is the intended
-   override path when the wrapper should paint a different token. */
-podcast-test-theme-hb {
+   area to the LEFT and RIGHT of the 1000 px content column with the
+   HMG "secondary" background token. The theme component ships its own
+   `background: var(--hmg-des-color-background-primary)` on an Angular
+   `[_nghost-*]` attribute selector (specificity 0,1,0); combining our
+   tag with a class (`.page-shell`) raises this rule to 0,1,1 so it
+   wins — no `!important` needed. */
+podcast-test-theme-hb.page-shell {
   display: block;
   min-height: 100vh;
-  background: var(--hmg-des-color-background-secondary) !important;
+  background: var(--hmg-des-color-background-secondary);
 }
 
 img { display: block; max-width: 100%; }
