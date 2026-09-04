@@ -82,6 +82,12 @@ export class PodcastSlider {
     // this stays at the TARGET so consecutive clicks advance correctly,
     // instead of re-reading a mid-animation scrollLeft.
     this.firstVisibleIndex = 0;
+    // Direction-aware anchor: +1 = "leaning forward" (pill sits one slot
+    // right of the window's centre), 0 = neutral / backward (pill at the
+    // window centre). Windowed-dots reads this in _computeWindow so the
+    // pill visually leans in the direction the user is scrolling.
+    this._prevAnchorFV = 0;
+    this._anchorOffset = 0;
     this.render();
     this.updateSpacer();
     this.bind();
@@ -229,6 +235,12 @@ export class PodcastSlider {
         const { visibleCount: K } = this.computeVisibility();
         const maxIdx = Math.max(0, this.data.length - K);
         const idx = Math.max(0, Math.min(maxIdx, Math.round(this.track.scrollLeft / STRIDE)));
+        // Same direction-anchor update as scrollToIndex — a drag / wheel
+        // scroll that settles further right counts as forward, further
+        // left counts as backward.
+        if (idx > this._prevAnchorFV) this._anchorOffset = 1;
+        else if (idx < this._prevAnchorFV) this._anchorOffset = 0;
+        this._prevAnchorFV = idx;
         this.firstVisibleIndex = idx;
         const target = this.tiles[idx].offsetLeft
           - (parseFloat(getComputedStyle(this.track).paddingInlineStart) || 0);
@@ -314,6 +326,11 @@ export class PodcastSlider {
   scrollToIndex(i) {
     const tile = this.tiles[i];
     if (!tile) return;
+    // Update the direction anchor BEFORE recomputing the window so
+    // _computeWindow picks the right centre slot for this movement.
+    if (i > this._prevAnchorFV) this._anchorOffset = 1;
+    else if (i < this._prevAnchorFV) this._anchorOffset = 0;
+    this._prevAnchorFV = i;
     // Align the target tile to the header padding column.
     const trackPl = parseFloat(getComputedStyle(this.track).paddingInlineStart) || 0;
     const trackRect = this.track.getBoundingClientRect();
@@ -402,9 +419,12 @@ export class PodcastSlider {
         rightOverflow: false,
       };
     }
-    // Preferred pill slot inside the window — visual centre so the row
-    // has room on both sides. For MAX=10, K=6 → centerSlot = 2.
-    const centerSlot = Math.floor((MAX - K) / 2);
+    // Preferred pill slot inside the window: the visual centre, plus the
+    // direction anchor (+1 when the user is scrolling forward, 0 when
+    // backward). Leaning forward pushes the pill one slot to the right,
+    // so the row visually points "in the direction of travel".
+    const centerSlot =
+      Math.floor((MAX - K) / 2) + (this._anchorOffset || 0);
     const start = Math.max(0, Math.min(N - MAX, firstVisible - centerSlot));
     const end = start + MAX - 1;
     return {
