@@ -387,16 +387,11 @@ export class PodcastSlider {
   }
 
   /** Compute the current window of large dots for the windowed-dots mode.
-      Strategy: keep the window anchored at the LEFT so the pill visibly
-      walks through slots 0 … (MAX − K) while the dot row stays static —
-      "der aktive Slot rutscht bis an den Rand". Once the pill reaches
-      the right edge of the window (slot MAX − K), it stops moving
-      relative to the window and the window itself starts sliding one
-      slot per firstVisible step — the dots physically slide underneath
-      the pill until firstVisible hits its maximum. The right peek dot
-      stays visible until the very last position, matching the user's
-      "the last faded dot should stay while more elements exist on that
-      side". */
+      Strategy: the pill "rests" at the middle slot of the window and
+      the WINDOW slides underneath it as firstVisible changes. The pill
+      only walks toward the left / right edge when the window itself has
+      run out of room to shift — i.e. when firstVisible is a few steps
+      away from the very start or very end. Symmetric on both ends. */
   _computeWindow(firstVisible, K, MAX = 10) {
     const N = this.data.length;
     if (N <= MAX) {
@@ -407,9 +402,10 @@ export class PodcastSlider {
         rightOverflow: false,
       };
     }
-    // MAX − K = 4 for K=6, MAX=10: pill can walk through 5 slots (0..4)
-    // before the window has to move.
-    const start = Math.max(0, Math.min(N - MAX, firstVisible - (MAX - K)));
+    // Preferred pill slot inside the window — visual centre so the row
+    // has room on both sides. For MAX=10, K=6 → centerSlot = 2.
+    const centerSlot = Math.floor((MAX - K) / 2);
+    const start = Math.max(0, Math.min(N - MAX, firstVisible - centerSlot));
     const end = start + MAX - 1;
     return {
       start,
