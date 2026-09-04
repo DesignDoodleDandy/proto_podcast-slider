@@ -16,7 +16,8 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: #ffffff;
+  /* Pale grey outside the 1000 px content column. */
+  background: #eaeaea;
 }
 
 /* The theme component acts as the page shell — give it space to breathe. */
@@ -28,29 +29,29 @@ podcast-test-theme-hb {
 img { display: block; max-width: 100%; }
 
 /* --------------------------------------------------------------
-   Page layout — two sections stacked (like Figma)
+   Page layout — 1000 px content column centered on the pale-grey
+   background. White above / below the slider sections; sliders
+   themselves keep their blue accent within the column.
    ------------------------------------------------------------ */
 .page {
+  max-width: 1000px;
+  margin-inline: auto;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
   gap: 60px;
   padding-block: 60px;
 }
 
-/* Rich-text prose blocks between sections — same content column as the
-   section headers so the copy aligns with "Podcasts" and the tiles. */
+/* Rich-text prose blocks — narrower than the slider column so the copy
+   stays comfortably readable. Left-aligned to line up with the
+   "Podcasts" header 20 px inside the section. */
 .page__prose {
-  max-width: 1200px;
+  max-width: 640px; /* 600 px content + 40 px total padding */
   width: 100%;
-  margin-inline: auto;
   padding-inline: 20px;
   box-sizing: border-box;
-}
-@media (min-width: 641px) {
-  .page__prose { padding-inline: 32px; }
-}
-@media (min-width: 1025px) {
-  .page__prose { padding-inline: 40px; }
+  align-self: flex-start;
 }
 
 /* --------------------------------------------------------------
@@ -65,21 +66,14 @@ img { display: block; max-width: 100%; }
   overflow: hidden;
 }
 
-/* Header and control still respect the 1200 px content column. Only the
-   track escapes it (see .slider__track below) so the slider is edge-to-edge. */
+/* Header and control area — 20 px inset from the section (and page)
+   edge, so "Podcasts" and the ‹ ›-dot-controls line up with the first
+   tile's left edge. Tiles themselves bleed to the section edges via
+   .slider__track's own padding. */
 .podcast-section__container {
-  max-width: 1200px;
   width: 100%;
-  margin-inline: auto;
   padding-inline: 20px;
   box-sizing: border-box;
-}
-
-@media (min-width: 641px) {
-  .podcast-section__container { padding-inline: 32px; }
-}
-@media (min-width: 1025px) {
-  .podcast-section__container { padding-inline: 40px; }
 }
 
 .podcast-section__header {
@@ -140,12 +134,6 @@ img { display: block; max-width: 100%; }
      from rapid button clicks. We handle snapping ourselves in the settle
      timer (bind() → 150 ms after last scroll event → align to nearest tile). */
   scroll-padding-inline-start: var(--track-pl);
-}
-@media (min-width: 641px) {
-  .slider__track { --track-pl: max(32px, calc((100% - 1200px) / 2 + 32px)); }
-}
-@media (min-width: 1025px) {
-  .slider__track { --track-pl: max(40px, calc((100% - 1200px) / 2 + 40px)); }
 }
 .slider__track::-webkit-scrollbar { display: none; }
 
